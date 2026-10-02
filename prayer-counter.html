@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prayer Counter</title>
+<style>
+:root{--bg:#0d1f1a;--card:#14302a;--fg:#e8f3ee;--mu:#8fb3a5;--ac:#e0b84c}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg);padding:12px;max-width:560px;margin:auto}
+h1{font-size:20px;margin:4px 0 10px}.card{background:var(--card);border-radius:14px;padding:12px;margin-bottom:12px}
+.vid{position:relative;aspect-ratio:3/4;background:#000;border-radius:10px;overflow:hidden}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+button,select{background:#1f4a40;color:var(--fg);border:0;border-radius:8px;padding:10px 12px;font-size:14px}
+button.p{background:var(--ac);color:#222;font-weight:600}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.big{font-size:56px;font-weight:700;color:var(--ac);line-height:1}.mu{color:var(--mu);font-size:13px}
+#warn{display:none;background:#b3261e;color:#fff;border-radius:10px;padding:10px;margin-top:8px;font-weight:600}
+#log{font-size:12px;color:var(--mu);max-height:90px;overflow:auto;margin-top:6px}
+</style></head><body>
+<h1 style="margin-bottom:2px">🕌 Prayer Counter &amp; Reminder</h1>
+<p class="mu" style="margin:0 0 10px">Created by <b style="color:var(--ac)">Firdaus F</b></p>
+<div class="card">
+ <div class="row" style="margin:0"><select id="pr"><option value="2">Fajr (2)</option><option value="4">Dhuhr (4)</option><option value="4">Asr (4)</option><option value="3">Maghrib (3)</option><option value="4">Isha (4)</option><option value="2">Sunnah (2)</option></select>
+ <select id="lg"><option value="id">Bahasa Indonesia</option><option value="en">English</option><option value="ar">العربية</option></select>
+ <button id="vo">🔊 Voice on</button><button id="qt">Qunut: on</button></div>
+ <div class="row"><button class="p" id="go">Start camera</button><button id="sw">Flip</button></div>
+ <div class="vid" style="margin-top:8px"><video id="v" playsinline muted></video><canvas id="c"></canvas></div>
+ <div id="warn"></div>
+ <div id="qn" style="display:none;direction:rtl;text-align:center;white-space:pre-line;background:#0b2a22;border:1px solid var(--ac);border-radius:10px;padding:10px;margin-top:8px;font-size:20px;line-height:2;max-height:220px;overflow:auto"></div>
+ <div class="row"><div><div class="big"><span id="rk">0</span><span style="font-size:24px">/<span id="tg">2</span></span></div><div class="mu">rak'ah</div></div>
+ <div style="flex:1;text-align:right"><div id="st" style="font-size:20px">—</div><div class="mu">Ruku': <b id="ru">0</b> · Sujud: <b id="su">0</b></div></div></div>
+ <div class="row"><button id="m1">+ rak'ah</button><button id="m2">− rak'ah</button><button id="rs">Reset</button></div>
+ <div id="log"></div>
+ <p class="mu">Put the phone ~2 m away at your side (side view), full body in frame, good light. Turn the volume up. Detection is approximate; fix the count with +/−.</p>
+</div>
+
+<script type="module">
+const $=id=>document.getElementById(id);
+const T={
+ id:{stand:"Berdiri",ruku:"Rukuk",itidal:"Iktidal",sujud:"Sujud",sit:"Duduk",rak:n=>`Rakaat ${n} selesai`,done:"Jumlah rakaat sudah lengkap. Duduk tahiyat akhir lalu salam",
+  noRuku:"Peringatan: rukuk terlewat pada rakaat ini",oneSujud:"Peringatan: baru satu sujud. Lakukan sujud kedua",
+  extra:n=>`Peringatan: rakaat sudah ${n}, cukup. Duduk tahiyat akhir`,noTah:"Peringatan: tahiyat awal terlewat. Setelah rakaat kedua harus duduk",
+  badSit:"Peringatan: tidak duduk di sini. Berdiri untuk rakaat berikutnya",tah:"Tahiyat awal",tahF:"Tahiyat akhir. Lalu salam",lang:"id-ID"},
+ en:{stand:"Standing",ruku:"Ruku",itidal:"I'tidal",sujud:"Sujud",sit:"Sitting",rak:n=>`Rak'ah ${n} complete`,done:"Rak'ah count complete. Sit for final tashahhud, then salam",
+  noRuku:"Warning: ruku' was missed in this rak'ah",oneSujud:"Warning: only one sujud so far. Do the second sujud",
+  extra:n=>`Warning: you already finished ${n} rak'ah. Sit for final tashahhud`,noTah:"Warning: first tashahhud missed. Sit after the second rak'ah",
+  badSit:"Warning: do not sit here. Stand for the next rak'ah",tah:"First tashahhud",tahF:"Final tashahhud. Then salam",lang:"en-US"},
+ ar:{stand:"قيام",ruku:"ركوع",itidal:"اعتدال",sujud:"سجود",sit:"جلوس",rak:n=>`ركعة ${n}`,done:"اكتملت الركعات. اجلس للتشهد الأخير ثم سلم",
+  noRuku:"تنبيه: فاتك الركوع",oneSujud:"تنبيه: سجدة واحدة فقط. أتم السجدة الثانية",extra:n=>`تنبيه: أتممت ${n} ركعات. اجلس للتشهد الأخير`,
+  noTah:"تنبيه: فاتك التشهد الأول",badSit:"تنبيه: لا تجلس هنا. قم للركعة التالية",tah:"التشهد الأول",tahF:"التشهد الأخير ثم سلم",lang:"ar-SA"}
+};
+const L=()=>T[$("lg").value];
+const O={id:{o:["","pertama","kedua","ketiga","keempat","kelima","keenam"],q:"Qunut",r:(a,b)=>`Rukuk ${O.id.o[a]||a}, rakaat ${O.id.o[b]||b}`},
+en:{o:["","first","second","third","fourth","fifth","sixth"],q:"Qunut",r:(a,b)=>`Ruku' ${O.en.o[a]||a}, rak'ah ${b}`},
+ar:{o:["","الأولى","الثانية","الثالثة","الرابعة","الخامسة","السادسة"],q:"قنوت",r:(a,b)=>`ركوع ${a}، الركعة ${O.ar.o[b]||b}`}};
+let voice=true,qSpeak=false;
+function say(txt,warn){
+ $("log").innerHTML=`${new Date().toLocaleTimeString()} ${warn?"⚠ ":""}${txt}<br>`+$("log").innerHTML;
+ if(warn){$("warn").style.display="block";$("warn").textContent=txt;clearTimeout(say.t);say.t=setTimeout(()=>$("warn").style.display="none",6000);beep()}
+ if(!voice||!window.speechSynthesis)return;
+ if(warn||qSpeak){speechSynthesis.cancel();qSpeak=false}
+ const u=new SpeechSynthesisUtterance(txt);u.lang=L().lang;u.rate=1.05;speechSynthesis.speak(u);
+}
+function beep(){try{const a=new AudioContext(),o=a.createOscillator();o.connect(a.destination);o.frequency.value=880;o.start();o.stop(a.currentTime+.35)}catch{}}
+$("vo").onclick=()=>{voice=!voice;$("vo").textContent=voice?"🔊 Voice on":"🔇 Voice off";if(voice)say(L().stand)};
+
+/* ---- sequence state ---- */
+let rak=0,ru=0,su=0,sujIn=0,rukuCnt=0,rukuSeen=false,afterSecond=false,cur="",cand="",candN=0,warned={};
+const target=()=>+$("pr").value;
+function ui(){$("rk").textContent=rak;$("tg").textContent=target();$("ru").textContent=ru;$("su").textContent=su;
+ $("st").textContent={stand:"Qiyam",ruku:"Ruku'",sujud:"Sujud",sit:"Julus",itidal:"I'tidal"}[cur]||"—"}
+function warnOnce(k,txt){if(warned[k])return;warned[k]=1;say(txt,true)}
+function change(s){
+ endQ();const prev=cur,t=target(),w=L();
+ if(s==="ruku"){ru++;rukuSeen=true;rukuCnt++;cur="ruku";say(O[$("lg").value].r(rukuCnt,rak+1))}
+ else if(s==="stand"){
+  if(afterSecond){ // standing after 2nd sujud
+   if(rak>=t){warnOnce("extra"+rak,w.extra(rak))}
+   else if(rak===2&&t>2&&!warned.tahSeen){warnOnce("tah"+rak,w.noTah)}
+   afterSecond=false;rukuSeen=false;rukuCnt=0;sujIn=0;warned.tahSeen=0;cur="stand";say(w.stand);
+  }else if(prev==="sujud"&&sujIn===1){warnOnce("one"+rak,w.oneSujud);cur="stand"}
+  else{cur=prev==="ruku"?"itidal":"stand";say(cur==="itidal"?w.itidal:w.stand)}
+ }
+ else if(s==="sujud"){
+  if(!rukuSeen&&sujIn===0)warnOnce("nor"+rak,w.noRuku);
+  su++;sujIn++;cur="sujud";say(w.sujud);
+  if(sujIn===2){rak++;sujIn=0;afterSecond=true;say(w.rak(rak));
+   if(rak===t)setTimeout(()=>say(w.done),1500)}
+ }
+ else if(s==="sit"){
+  cur="sit";
+  if(afterSecond){
+   if(rak===t)say(w.tahF);
+   else if(rak===2&&t>2){warned.tahSeen=1;say(w.tah)}
+   else warnOnce("bs"+rak,w.badSit);
+  }else say(w.sit);
+ }
+ ui();
+}
+function onFrame(s){if(s==="sit"&&cur!=="sujud"&&cur!=="sit")s=null;if(!s)return;if(s===cand)candN++;else{cand=s;candN=1}if(candN===7&&s!==cur&&!(s==="stand"&&cur==="itidal"))change(s)}
+
+/* ---- qunut (hands raised while standing) ---- */
+const QUNUT=`اللَّهُمَّ اهْدِنِي فِيمَنْ هَدَيْتَ
+وَعَافِنِي فِيمَنْ عَافَيْتَ
+وَتَوَلَّنِي فِيمَنْ تَوَلَّيْتَ
+وَبَارِكْ لِي فِيمَا أَعْطَيْتَ
+وَقِنِي شَرَّ مَا قَضَيْتَ،
+فَإِنَّكَ تَقْضِي وَلَا يُقْضَى عَلَيْكَ،
+سُبْحَانَكَ رَبَّ الْبَيْتِ
+أَسْتَغْفِرُكَ وَأَتُوبُ إِلَيْكَ
+وَأُؤْمِنُ بِكَ وَأَتَوَكَّلُ عَلَيْكَ
+وَلَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِكَ يَا رَحِيمُ.`;
+let qOn=true,handsT=0,lowT=0,qDone=false,qFin=false,qTok=0;
+function endQ(){qTok++;qDone=false;qFin=false;handsT=0;lowT=0;$("qn").style.display="none";if(qSpeak){speechSynthesis.cancel();qSpeak=false}}
+function startQ(){
+ say(O[$("lg").value].q);
+ $("qn").textContent=QUNUT;$("qn").style.display="block";
+ if(!voice||!window.speechSynthesis)return;
+ const ls=QUNUT.split("\n"),tk=qTok;qSpeak=true;
+ ls.forEach((t,i)=>{const u=new SpeechSynthesisUtterance(t);u.lang="ar-SA";u.rate=.85;if(i===ls.length-1)u.onend=()=>{if(tk!==qTok)return;qSpeak=false;qFin=true;$("qn").style.display="none"};speechSynthesis.speak(u)});
+}
+function qunut(p){
+ if(!qOn||(cur!=="stand"&&cur!=="itidal"))return;
+ const now=performance.now(),vis=ids=>ids.reduce((x,i)=>x+(p[i].visibility||0),0);
+ const [sh,wr,hp]=vis([11,15,23])>=vis([12,16,24])?[p[11],p[15],p[23]]:[p[12],p[16],p[24]];
+ const up=(wr.visibility||0)>.4&&wr.y<sh.y+.18*Math.abs(hp.y-sh.y);
+ if(up){lowT=0;if(!handsT)handsT=now;else if(!qDone&&now-handsT>2000){qDone=true;qFin=!(voice&&window.speechSynthesis);startQ()}}
+ else{handsT=0;if(qDone&&qFin){if(!lowT)lowT=now;else if(now-lowT>1000)endQ()}}
+}
+$("qt").onclick=()=>{qOn=!qOn;$("qt").textContent="Qunut: "+(qOn?"on":"off");if(!qOn)endQ()};
+
+/* ---- pose ---- */
+const ang=(a,b,c)=>{const v=[a.x-b.x,a.y-b.y],w=[c.x-b.x,c.y-b.y];return Math.acos((v[0]*w[0]+v[1]*w[1])/(Math.hypot(...v)*Math.hypot(...w)+1e-9))*180/Math.PI};
+function classify(p){
+ const vis=ids=>ids.reduce((s,i)=>s+(p[i].visibility||0),0),A=[11,23,25,27],B=[12,24,26,28];
+ const [s,h,k,a]=(vis(A)>=vis(B)?A:B).map(i=>p[i]),n=p[0];
+ const torso=Math.atan2(Math.abs(s.x-h.x),Math.abs(s.y-h.y)+1e-6)*180/Math.PI,knee=ang(h,k,a);
+ if(knee<125){if(n.y>h.y&&torso>20)return"sujud";if(n.y<h.y&&torso<40)return"sit";return null}
+ if(knee>150&&torso<28)return"stand";
+ if(knee>140&&torso>55)return"ruku";
+ return null;
+}
+const BONES=[[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[11,13],[13,15],[12,14],[14,16]];
+let lm,stream,facing="environment",run=false,last=-1;
+function loop(){
+ if(!run)return;const v=$("v"),c=$("c");
+ if(v.readyState>=2&&v.currentTime!==last){last=v.currentTime;
+  const r=lm.detectForVideo(v,performance.now());c.width=v.videoWidth;c.height=v.videoHeight;
+  const g=c.getContext("2d");g.clearRect(0,0,c.width,c.height);const p=r.landmarks[0];
+  if(p){g.strokeStyle="#e0b84c";g.lineWidth=4;BONES.forEach(([i,j])=>{g.beginPath();g.moveTo(p[i].x*c.width,p[i].y*c.height);g.lineTo(p[j].x*c.width,p[j].y*c.height);g.stroke()});onFrame(classify(p));qunut(p)}}
+ requestAnimationFrame(loop);
+}
+async function loadMP(){
+ const V=window.PC_VENDOR,CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+ if(!V){const m=await import(CDN);
+  return [m.PoseLandmarker,await m.FilesetResolver.forVisionTasks(CDN+"/wasm"),{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"}]}
+ if(V.inline){ // everything embedded in this one file
+  const U=async(x,t)=>URL.createObjectURL(await(await fetch(`data:${t};base64,${x}`)).blob());
+  const m=await import(await U(V.js,"text/javascript"));
+  const f={wasmLoaderPath:await U(V.loader,"text/javascript"),wasmBinaryPath:await U(V.wasm,"application/wasm")};
+  const mb=new Uint8Array(await(await fetch(`data:application/octet-stream;base64,${V.model}`)).arrayBuffer());
+  return [m.PoseLandmarker,f,{modelAssetBuffer:mb}]}
+ const d=V.dir,m=await import(d+"/vision_bundle.js"); // local ./vendor folder (APK)
+ return [m.PoseLandmarker,{wasmLoaderPath:d+"/vision_wasm_internal.js",wasmBinaryPath:d+"/vision_wasm_internal.wasm"},{modelAssetPath:d+"/pose_landmarker_lite.task"}]
+}
+async function start(){
+ try{
+  speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance("")); // unlock audio on mobile
+  $("go").textContent="Loading model…";
+  if(!lm){const [PL,f,mo]=await loadMP();lm=await PL.createFromOptions(f,{baseOptions:mo,runningMode:"VIDEO",numPoses:1})}
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:640,height:480},audio:false});
+  $("v").srcObject=stream;await $("v").play();run=true;$("go").textContent="Stop camera";loop();
+ }catch(e){$("go").textContent="Start camera";let m;
+  if(!window.isSecureContext||!navigator.mediaDevices)m="Camera blocked: this page is not on HTTPS (a local file or http://192.168… address is not allowed on Android). Upload it to an HTTPS host, e.g. Netlify or GitHub Pages.";
+  else if(e.name==="NotAllowedError")m="Camera permission denied. In Chrome tap the lock icon > Permissions > Camera > Allow. Also check Android Settings > Apps > Chrome > Permissions > Camera.";
+  else if(e.name==="NotFoundError"||e.name==="NotReadableError")m="Camera not found or used by another app. Close other apps using the camera.";
+  else m="Could not load the pose model. Check your internet connection. ("+e.message+")";
+  alert(m)}
+}
+function stop(){run=false;stream&&stream.getTracks().forEach(t=>t.stop());$("go").textContent="Start camera"}
+function reset(){endQ();rukuCnt=0;rak=ru=su=sujIn=0;rukuSeen=afterSecond=false;cur=cand="";warned={};ui()}
+$("go").onclick=()=>run?stop():start();
+$("sw").onclick=()=>{facing=facing==="user"?"environment":"user";if(run){stop();start()}};
+$("m1").onclick=()=>{rak++;ui()};$("m2").onclick=()=>{rak=Math.max(0,rak-1);ui()};
+$("rs").onclick=reset;$("pr").onchange=reset;ui();
+</script></body></html>
